@@ -1,0 +1,10 @@
+# render.yaml — filled completely in Phase F
+# Placeholder so GitHub repo structure is complete
+services:
+  - name: helpdesk-ai-api
+    type: web
+    env: python
+
+  - name: helpdesk-ai-frontend
+    type: web
+    env: python
