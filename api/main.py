@@ -15,20 +15,17 @@ load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 async def lifespan(app: FastAPI):
     print("Starting up Helpdesk AI API...")
 
-    # Check DB
     from database import check_db_connection
     check_db_connection()
     print("  Database        : connected")
 
-    # Load classifier (small — just pkl files)
     from classifier import load_classifier
     app.state.classifier = load_classifier()
     print("  Classifier      : loaded")
 
-    # Embedder deferred — loads on first query to save RAM
     from retriever import load_embedder
     app.state.embedder = load_embedder()
-    # prints "Embedder : deferred"
+    print("  Embedder        : loaded")
 
     print("Startup complete. API is ready.")
     yield

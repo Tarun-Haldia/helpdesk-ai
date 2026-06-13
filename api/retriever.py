@@ -1,6 +1,6 @@
 # api/retriever.py
-# Lazy loads sentence transformer on first query, not at startup
-# This keeps startup RAM under 512MB for Render free tier
+# Uses fastembed instead of sentence-transformers + torch
+# RAM usage: ~150MB vs ~800MB — fits Render free tier 512MB limit
 
 import os
 import numpy as np
@@ -18,58 +18,58 @@ engine = create_engine(
     max_overflow  = 5
 )
 
-# Module-level cache — None until first query
+# Module-level cache
 _embedder = None
 
 
 def load_embedder():
     """
-    Called at startup — returns None placeholder.
-    Actual model loads on first query via get_embedder().
-    This keeps startup RAM under 512MB on Render free tier.
+    Loads fastembed model at startup.
+    all-MiniLM-L6-v2 via ONNX — same vectors as before,
+    fraction of the RAM.
     """
-    print("  Embedder        : deferred (loads on first query)")
-    return "deferred"
+    global _embedder
+    from fastembed import TextEmbedding
+
+    print("  Loading fastembed (all-MiniLM-L6-v2 ONNX)...")
+    _embedder = TextEmbedding(
+        model_name = "sentence-transformers/all-MiniLM-L6-v2"
+    )
+    print("  Embedder        : loaded (fastembed ONNX)")
+    return _embedder
 
 
 def get_embedder():
-    """
-    Returns cached embedder, loading it on first call.
-    Thread-safe enough for single-worker Render free tier.
-    """
+    """Returns cached embedder, loads if not yet initialised."""
     global _embedder
-    if _embedder is None or _embedder == "deferred":
-        print("Loading sentence transformer (first query)...")
-        from sentence_transformers import SentenceTransformer
-        import torch
-        device   = "cpu"
-        _embedder = SentenceTransformer(
-            "sentence-transformers/all-MiniLM-L6-v2",
-            device = device
-        )
-        print("Sentence transformer loaded.")
+    if _embedder is None:
+        load_embedder()
     return _embedder
 
 
 def encode_query(user_query: str) -> np.ndarray:
-    """Encode a single query string into a 384-dim vector."""
+    """
+    Encode a single query string into a 384-dim unit vector.
+    fastembed returns a generator — we take the first item.
+    """
     embedder = get_embedder()
-    vec = embedder.encode(
-        [user_query],
-        normalize_embeddings = True,
-        convert_to_numpy     = True
-    )[0]
+    vectors  = list(embedder.embed([user_query]))
+    vec      = np.array(vectors[0], dtype=np.float32)
+
+    # Normalise to unit vector (cosine similarity)
+    norm = np.linalg.norm(vec)
+    if norm > 0:
+        vec = vec / norm
     return vec
 
 
 def retrieve_similar(
     user_query : str,
-    embedder   : any = None,   # kept for API compatibility, ignored
+    embedder   : any = None,   # kept for API compatibility
     top_k      : int = 3
 ) -> list:
     """
-    Semantic search — encodes query then finds top_k
-    similar tickets via pgvector cosine similarity.
+    Encode query → pgvector cosine similarity search → top_k results.
     """
     query_vec = encode_query(user_query)
     vec_str   = str(query_vec.tolist())
@@ -80,7 +80,8 @@ def retrieve_similar(
             t.intent,
             t.user_query,
             t.solution,
-            ROUND(CAST(1 - (e.embedding <=> :vec) AS NUMERIC), 4) AS similarity
+            ROUND(CAST(1 - (e.embedding <=> :vec) AS NUMERIC), 4)
+                AS similarity
         FROM embeddings e
         JOIN tickets t ON t.id = e.ticket_id
         ORDER BY e.embedding <=> :vec
@@ -107,7 +108,7 @@ def retrieve_similar(
 
 
 def format_context_for_gemini(similar_tickets: list) -> str:
-    """Formats retrieved tickets into Gemini prompt context."""
+    """Format retrieved tickets as Gemini prompt context block."""
     if not similar_tickets:
         return "No similar historical tickets found."
 

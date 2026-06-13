@@ -1,11 +1,10 @@
-# torch installed via build command: pip install torch --index-url https://download.pytorch.org/whl/cpu
 fastapi
 uvicorn
 pydantic
 sqlalchemy
 psycopg2-binary
 pgvector
-sentence-transformers
+fastembed
 scikit-learn
 joblib
 pandas
