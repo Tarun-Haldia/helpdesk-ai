@@ -1,3 +1,4 @@
+# torch installed via build command: pip install torch --index-url https://download.pytorch.org/whl/cpu
 fastapi
 uvicorn
 pydantic

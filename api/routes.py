@@ -56,9 +56,9 @@ async def query_endpoint(request: Request, body: QueryRequest, db: Session = Dep
     # Step 2 — confidence gate
     escalate, escalation_reason = should_escalate(confidence)
 
-    # Step 3 — semantic search (always run, even if escalating)
-    embedder = request.app.state.embedder
-    similar  = retrieve_similar(user_query, embedder, top_k=3)
+
+# embedder is loaded lazily inside retrieve_similar
+    similar = retrieve_similar(user_query, top_k=3)
 
     similar_tickets = [
         SimilarTicket(
