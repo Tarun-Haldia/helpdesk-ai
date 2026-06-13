@@ -1,15 +1,13 @@
 services:
 
-  # ── Service 1: FastAPI Backend ──
   - name: helpdesk-ai-api
     type: web
     env: python
     region: oregon
     plan: free
     rootDir: .
-    buildCommand: |
-      pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install -r requirements.txt
-    startCommand: uvicorn api.main:app --host 0.0.0.0 --port $PORT
+    buildCommand: pip install torch --index-url https://download.pytorch.org/whl/cpu && pip install -r requirements.txt
+    startCommand: python api/start.py
     envVars:
       - key: SUPABASE_URL
         sync: false
@@ -22,9 +20,8 @@ services:
       - key: CONFIDENCE_THRESHOLD
         value: "60"
       - key: PYTHON_VERSION
-        value: "3.11.0"
+        value: "3.11.3"
 
-  # ── Service 2: Streamlit Frontend ──
   - name: helpdesk-ai-app
     type: web
     env: python
@@ -41,4 +38,4 @@ services:
       - key: API_BASE_URL
         sync: false
       - key: PYTHON_VERSION
-        value: "3.11.0"
+        value: "3.11.3"
