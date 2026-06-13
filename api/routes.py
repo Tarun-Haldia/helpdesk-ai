@@ -9,7 +9,11 @@ from sqlalchemy import text
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
+from pathlib import Path
+env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
+# On Render .env doesn't exist — env vars are set in dashboard
+# load_dotenv silently skips if file not found, which is correct
 
 from database import get_db
 from models import (
