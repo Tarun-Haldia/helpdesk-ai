@@ -3,67 +3,76 @@
 # into friendly step-by-step instructions.
 
 import os
-import google.generativeai as genai
+import time
 from pathlib import Path
+import google.generativeai as genai
 from dotenv import load_dotenv
 
-load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
+# ──────────────────────────────────────────────
+# Load Environment Variables
+# ──────────────────────────────────────────────
+load_dotenv(
+    dotenv_path=Path(__file__).resolve().parent.parent / ".env"
+)
 
-# ── Configure Gemini ──
+# ──────────────────────────────────────────────
+# Configure Gemini
+# ──────────────────────────────────────────────
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
 if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY not found in .env file")
 
 genai.configure(api_key=GEMINI_API_KEY)
 
-# ── Model config ──
+# ──────────────────────────────────────────────
+# Model Configuration
+# ──────────────────────────────────────────────
 generation_config = genai.GenerationConfig(
-    temperature       = 0.3,   # low = more focused, less creative
-    top_p             = 0.85,
-    top_k             = 40,
-    max_output_tokens = 1024,
+    temperature=0.3,
+    top_p=0.85,
+    top_k=40,
+    max_output_tokens=1024,
 )
 
 model = genai.GenerativeModel(
-    model_name        = "gemini-1.5-flash",   # fast + free tier
-    generation_config = generation_config
+    model_name="gemini-1.5-flash",
+    generation_config=generation_config,
 )
 
+# ──────────────────────────────────────────────
+# System Prompt
+# ──────────────────────────────────────────────
+SYSTEM_PROMPT = """
+You are a friendly and helpful IT support assistant.
 
-# ── System prompt ──
-SYSTEM_PROMPT = """You are a friendly and helpful IT support assistant.
-Your job is to help non-technical users solve their computer and software problems.
+Your job is to help non-technical users solve their
+computer and software problems.
 
 RULES:
-1. Always respond in clear, simple English that anyone can understand
+1. Always respond in clear, simple English
 2. Break solutions into numbered steps
-3. Each step must be a single, specific action
-4. Use plain language — avoid technical jargon
+3. Each step must be a single action
+4. Avoid technical jargon
 5. If a command is needed, show it in a code block
-6. End with a follow-up line asking if the issue is resolved
-7. Keep the total response under 300 words
-8. Never make up solutions — only use what is provided in the context
+6. End by asking if the issue is resolved
+7. Keep responses under 300 words
+8. Only use information provided in the context
 
-TONE: Friendly, patient, encouraging. Like explaining to a friend.
+TONE:
+Friendly, patient, encouraging.
 """
 
-
+# ──────────────────────────────────────────────
+# Generate Solution
+# ──────────────────────────────────────────────
 def generate_solution(
-    user_query      : str,
+    user_query: str,
     predicted_intent: str,
-    context         : str,
+    context: str,
 ) -> str:
     """
-    Calls Gemini with user query + retrieved context.
-    Returns a friendly step-by-step solution string.
-
-    Args:
-        user_query       : original user query (raw text)
-        predicted_intent : intent label from classifier
-        context          : formatted similar tickets from retriever
-
-    Returns:
-        str — human-friendly solution from Gemini
+    Generate a friendly step-by-step solution.
     """
 
     prompt = f"""
@@ -78,46 +87,60 @@ DETECTED ISSUE CATEGORY:
 {context}
 
 TASK:
-Based on the similar tickets above, provide a clear step-by-step solution
-for the user's problem. Make it easy to follow for a non-technical person.
+Based on the similar tickets above, provide a clear
+step-by-step solution for the user's problem.
+Make it easy for a non-technical person to follow.
 """
 
-    try:
-        response = model.generate_content(prompt)
+    for attempt in range(3):
+        try:
+            response = model.generate_content(prompt)
 
-        # Extract text from response
-        if response.parts:
-            return response.text.strip()
-        else:
+            if response.parts:
+                return response.text.strip()
+
             return _fallback_solution(predicted_intent)
 
-    except Exception as e:
-        print(f"Gemini API error: {e}")
-        return _fallback_solution(predicted_intent)
+        except Exception as e:
+            error_msg = str(e)
+
+            if "429" in error_msg:
+                wait_time = 40 * (attempt + 1)
+
+                print(
+                    f"Gemini rate limit hit. "
+                    f"Waiting {wait_time}s "
+                    f"(attempt {attempt + 1}/3)..."
+                )
+
+                time.sleep(wait_time)
+            else:
+                print(f"Gemini API error: {e}")
+                return _fallback_solution(predicted_intent)
+
+    return _fallback_solution(predicted_intent)
 
 
+# ──────────────────────────────────────────────
+# Generate Escalation Message
+# ──────────────────────────────────────────────
 def generate_escalation_message(
-    user_query       : str,
-    predicted_intent : str,
-    confidence       : float
+    user_query: str,
+    predicted_intent: str,
+    confidence: float,
 ) -> str:
     """
-    Called when confidence is below threshold.
-    Generates a polite message explaining escalation
-    and what the user can expect next.
-
-    Args:
-        user_query       : original user query
-        predicted_intent : best-guess intent from classifier
-        confidence       : classifier confidence score (0-100)
-
-    Returns:
-        str — friendly escalation message
+    Generate a polite escalation message when
+    confidence is below threshold.
     """
+
     prompt = f"""
 You are a friendly IT support assistant.
-A user has submitted a support request that our AI could not
-resolve with high confidence ({confidence:.1f}% confidence).
+
+A user has submitted a support request that
+our AI could not resolve confidently.
+
+Confidence Score: {confidence:.1f}%
 
 USER PROBLEM:
 {user_query}
@@ -126,65 +149,118 @@ BEST GUESS CATEGORY:
 {predicted_intent.replace('_', ' ').title()}
 
 TASK:
-Write a short, friendly message (max 80 words) that:
-1. Acknowledges their problem with empathy
-2. Explains that a support engineer will help them
-3. Tells them what to expect next (response within 24 hours)
-4. Encourages them to provide more details in the ticket form
+Write a short message (max 80 words) that:
+
+1. Acknowledges the issue
+2. Explains a support engineer will help
+3. Mentions response within 24 hours
+4. Encourages additional details
 
 Keep it warm and reassuring.
 """
-    try:
-        response = model.generate_content(prompt)
-        if response.parts:
-            return response.text.strip()
-        else:
+
+    for attempt in range(3):
+        try:
+            response = model.generate_content(prompt)
+
+            if response.parts:
+                return response.text.strip()
+
             return _default_escalation_message()
-    except Exception as e:
-        print(f"Gemini escalation error: {e}")
-        return _default_escalation_message()
+
+        except Exception as e:
+            error_msg = str(e)
+
+            if "429" in error_msg:
+                wait_time = 40 * (attempt + 1)
+
+                print(
+                    f"Gemini rate limit hit. "
+                    f"Waiting {wait_time}s "
+                    f"(attempt {attempt + 1}/3)..."
+                )
+
+                time.sleep(wait_time)
+            else:
+                print(f"Gemini escalation error: {e}")
+                return _default_escalation_message()
+
+    return _default_escalation_message()
 
 
+# ──────────────────────────────────────────────
+# Fallback Solution
+# ──────────────────────────────────────────────
 def _fallback_solution(intent: str) -> str:
     """
-    Hardcoded fallback when Gemini API fails.
-    Ensures users always get some guidance.
+    Used when Gemini is unavailable.
     """
+
     fallbacks = {
-        "internet_issue"     : "1. Restart your router and modem.\n2. Disconnect and reconnect to WiFi.\n3. Try opening a different website.\n4. Restart your browser.\n5. If still not working, contact IT support.",
-        "vpn_setup"          : "1. Check your internet connection is working.\n2. Close and reopen the VPN application.\n3. Try disconnecting then reconnecting.\n4. Restart your computer and try again.\n5. Contact IT support if issue persists.",
-        "reset_password"     : "1. Go to the login page.\n2. Click 'Forgot Password'.\n3. Enter your registered email address.\n4. Check your email for reset link.\n5. Follow the link to create a new password.",
-        "hardware_issue"     : "1. Restart your computer.\n2. Check all cable connections.\n3. Run hardware diagnostics if available.\n4. Contact IT support with the issue details.",
-        "software_install"   : "1. Run the installer as Administrator.\n2. Temporarily disable antivirus.\n3. Ensure you have enough disk space.\n4. Restart and try installation again.",
+        "internet_issue": (
+            "1. Restart your router and modem.\n"
+            "2. Disconnect and reconnect to Wi-Fi.\n"
+            "3. Try opening another website.\n"
+            "4. Restart your browser.\n"
+            "5. Contact IT support if the issue continues."
+        ),
+
+        "vpn_setup": (
+            "1. Verify your internet connection works.\n"
+            "2. Close and reopen the VPN application.\n"
+            "3. Disconnect and reconnect the VPN.\n"
+            "4. Restart your computer.\n"
+            "5. Contact IT support if needed."
+        ),
+
+        "reset_password": (
+            "1. Open the login page.\n"
+            "2. Click 'Forgot Password'.\n"
+            "3. Enter your registered email address.\n"
+            "4. Check your email inbox.\n"
+            "5. Follow the password reset link."
+        ),
+
+        "hardware_issue": (
+            "1. Restart your computer.\n"
+            "2. Check all cable connections.\n"
+            "3. Run hardware diagnostics if available.\n"
+            "4. Contact IT support with details."
+        ),
+
+        "software_install": (
+            "1. Run the installer as Administrator.\n"
+            "2. Temporarily disable antivirus software.\n"
+            "3. Ensure sufficient disk space.\n"
+            "4. Restart your computer.\n"
+            "5. Try the installation again."
+        ),
     }
+
     return fallbacks.get(
         intent,
-        "Please restart your device and try again. "
-        "If the issue persists, contact IT support with details of your problem."
+        (
+            "1. Restart your device.\n"
+            "2. Try the action again.\n"
+            "3. If the issue continues, contact IT support."
+        ),
     )
 
 
+# ──────────────────────────────────────────────
+# Default Escalation Message
+# ──────────────────────────────────────────────
 def _default_escalation_message() -> str:
-    """Default escalation message when Gemini API fails."""
+    """
+    Returned when Gemini cannot generate
+    an escalation message.
+    """
+
     return (
         "We understand you're experiencing a technical issue. "
-        "Our AI assistant wasn't able to resolve this with full confidence, "
-        "so we're connecting you with a support engineer who will help you shortly. "
-        "Please fill in the ticket form below with as much detail as possible. "
-        "You can expect a response within 24 hours."
+        "Our AI assistant was unable to resolve it with high confidence. "
+        "A support engineer will review your request and respond within "
+        "24 hours. Please provide as much detail as possible in your "
+        "ticket to help us assist you more quickly."
     )
 
-# api/check_gemini.py — list all available Gemini models
-import os
-import google.generativeai as genai
-from pathlib import Path
-from dotenv import load_dotenv
-
-load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
-
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-
-print("Available Gemini models that support generateContent:\n")
-for m in genai.list_models():
-    if "generateContent" in m.supported_generation_methods:
-        print(f"  {m.name}")
