@@ -4,8 +4,8 @@ pydantic==2.7.1
 sqlalchemy==2.0.30
 psycopg[binary]
 pgvector==0.2.5
-sentence-transformers==2.7.0
-torch
+sentence-transformers==3.0.1
+torch>=2.9.0
 scikit-learn==1.6.1
 joblib==1.4.2
 pandas==2.2.2
