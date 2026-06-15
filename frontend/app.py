@@ -190,7 +190,7 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
     page = st.radio(
-        "",
+        "Navigation",
         ["💬 Chat", "📋 History", "🎫 Tickets"],
         label_visibility = "collapsed"
     )
@@ -300,10 +300,10 @@ if page == "💬 Chat":
     with st.form("chat_form", clear_on_submit=False):
         user_query = st.text_area(
             "",
-            placeholder = "what's going on with your machine... (be specific, it helps)",
+            placeholder = ("what's going on with your machine... (be specific, it helps)"),
             height      = 100,
             label_visibility = "collapsed"
-        )
+        )      
         col1, col2 = st.columns([1, 5])
         with col1:
             submitted = st.form_submit_button(
