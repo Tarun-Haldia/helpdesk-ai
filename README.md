@@ -13,6 +13,8 @@ through an AI pipeline — no engineer required for common problems.
 
 ## Live Demo
 
+
+
 | Service | URL |
 |---|---|
 | Frontend (Streamlit) | https://helpdesk-ai-app.onrender.com |
@@ -36,7 +38,6 @@ ML Classifier   Semantic Search      Gemini LLM
 ↓              ↓
 
 └──── Supabase PostgreSQL ────┘
-
 
 ## Key Results
 
