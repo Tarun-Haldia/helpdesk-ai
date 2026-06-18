@@ -5,6 +5,8 @@ print('Loading models from Supabase...')
 clf = load_classifier()
 print('Models loaded.\n')
 
+
+
 # Test 1
 result = predict('My WiFi is connected but internet is not working', clf)
 print(f"Test 1:")
