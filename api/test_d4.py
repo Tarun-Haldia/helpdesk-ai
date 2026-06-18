@@ -14,6 +14,8 @@ print("=" * 55)
 query   = "My WiFi is connected but I cannot browse any websites"
 intent  = "internet_issue"
 
+
+
 similar = retrieve_similar(query, embedder, top_k=3)
 context = format_context_for_gemini(similar)
 solution = generate_solution(query, intent, context)
